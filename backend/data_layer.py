@@ -61,9 +61,9 @@ def get_realtime_quote(code: str, exchange: str) -> dict:
             err_msg = err.get("message", "") if isinstance(err, dict) else ""
             if not err_msg:
                 err_msg = data.get("msg", "未知错误")
-            return {"code": code, "exchange": exchange, "error": err_msg}
+            return {"code": code, "exchange": exchange, "name": code, "price": 0, "change": 0, "error": err_msg}
     except Exception as e:
-        return {"code": code, "exchange": exchange, "error": str(e)}
+        return {"code": code, "exchange": exchange, "name": code, "price": 0, "change": 0, "error": str(e)}
 
 
 def query_indicator(query: str) -> str:
@@ -108,6 +108,17 @@ def market_insight(query: str) -> str:
         return f"查询失败: {e}"
 
 
+DEFAULT_BALANCE = {
+    "totalAssets": 0,
+    "availableBalance": 0,
+    "frozenAmount": 0,
+    "dayProfit": 0,
+    "dayProfitPct": 0,
+    "totalProfit": 0,
+    "totalProfitPct": 0,
+}
+
+
 def get_account_balance() -> dict:
     """获取模拟盘账户余额"""
     url = f"{BASE_URL}/api/simSkills/getAccountBalance"
@@ -119,12 +130,16 @@ def get_account_balance() -> dict:
         )
         data = resp.json()
         if data.get("ok"):
-            return data["data"]
+            bal = data["data"]
+            # 确保所有必需字段存在
+            for k, v in DEFAULT_BALANCE.items():
+                bal.setdefault(k, v)
+            return bal
         # 兼容错误格式
         msg = data.get("msg", data.get("error", {}).get("message", "请求失败"))
-        return {"error": msg}
+        return {**DEFAULT_BALANCE, "error": msg}
     except Exception as e:
-        return {"error": str(e)}
+        return {**DEFAULT_BALANCE, "error": str(e)}
 
 
 def get_positions() -> list:
@@ -293,7 +308,9 @@ def collect_data() -> dict:
             }
         else:
             q = get_realtime_quote(etf["code"], exchange)
-        # 补充ETF元信息
+        # 补充ETF元信息（name 优先用API返回的，失败时用预设名称）
+        if not q.get("name") or q["name"] == q["code"]:
+            q["name"] = etf["name"]
         q["sector"] = etf["sector"]
         q["company"] = etf.get("company", "")
         q["is_custom"] = etf.get("is_custom", False)
