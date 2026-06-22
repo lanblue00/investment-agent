@@ -1,0 +1,18 @@
+[
+  {
+    "code": "159632",
+    "exchange": "SZ",
+    "name": "纳斯达克ETF华安",
+    "sector": "美股",
+    "company": "",
+    "is_custom": true
+  },
+  {
+    "code": "512500",
+    "exchange": "SH",
+    "name": "中证500ETF华夏",
+    "sector": "宽基",
+    "company": "",
+    "is_custom": true
+  }
+]
