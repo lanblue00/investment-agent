@@ -696,8 +696,8 @@ function renderBalance(bal) {
   grid.innerHTML = [
     statCard('总资产', formatMoney(scaleMoney(bal.totalAssets)), '', ''),
     statCard('可用余额', formatMoney(scaleMoney(bal.availableBalance)), '冻结: ' + formatMoney(scaleMoney(bal.frozenAmount)), ''),
-    statCard('当日盈亏', daySign + formatMoney(dayProfit), (daySign + (bal.dayProfitPct * 100).toFixed(2) + '%'), dayClass),
-    statCard('累计盈亏', totalSign + formatMoney(totalProfit), (totalSign + (bal.totalProfitPct * 100).toFixed(2) + '%'), totalClass),
+    statCard('当日盈亏', daySign + formatMoney(dayProfit), (daySign + ((bal.dayProfitPct || 0) * 100).toFixed(2) + '%'), dayClass),
+    statCard('累计盈亏', totalSign + formatMoney(totalProfit), (totalSign + ((bal.totalProfitPct || 0) * 100).toFixed(2) + '%'), totalClass),
   ].join('');
 }
 
@@ -861,8 +861,10 @@ function drawETFGrid(data, sortKey) {
   }
   const grid = document.getElementById('etf-grid');
   grid.innerHTML = sorted.map(q => {
-    const changeClass = q.change > 0 ? 'up' : q.change < 0 ? 'down' : 'flat';
-    const changeSign = q.change > 0 ? '+' : '';
+    const qc = q.change || 0;
+    const qp = q.price || 0;
+    const changeClass = qc > 0 ? 'up' : qc < 0 ? 'down' : 'flat';
+    const changeSign = qc > 0 ? '+' : '';
     const signalLabel = { buy: '买入', dca: '定投', hold: '持有', reduce: '减仓', sell: '卖出', wait: '观望' }[q.signal] || '观望';
     const signalClass = q.signal || 'wait';
     let extra = '';
@@ -872,7 +874,7 @@ function drawETFGrid(data, sortKey) {
       const profitClass = scaledProfit >= 0 ? 'up' : 'down';
       extra = '<div class="etf-extra">'
         + '<span>成本: ' + (p.cost_price || 0).toFixed(3) + '</span>'
-        + '<span>盈亏: <b class="' + profitClass + '">' + (scaledProfit >= 0 ? '+' : '') + formatMoney(scaledProfit) + ' (' + (p.profit_pct >= 0 ? '+' : '') + (p.profit_pct * 100).toFixed(2) + '%)</b></span>'
+        + '<span>盈亏: <b class="' + profitClass + '">' + (scaledProfit >= 0 ? '+' : '') + formatMoney(scaledProfit) + ' (' + ((p.profit_pct || 0) >= 0 ? '+' : '') + ((p.profit_pct || 0) * 100).toFixed(2) + '%)</b></span>'
         + '</div>';
     }
     const customBadge = q.is_custom ? '<span class="etf-custom-badge">自定义</span>' : '';
@@ -883,8 +885,8 @@ function drawETFGrid(data, sortKey) {
       + '<div class="etf-header">'
       +   '<div><div class="etf-name">' + escHtml(q.name) + ' ' + customBadge + ' ' + fundTypeBadge + '</div>'
       +   '<div class="etf-code">' + q.code + '.' + q.exchange + '</div></div>'
-      +   '<div style="text-align:right"><div class="etf-change ' + changeClass + '">' + changeSign + q.change.toFixed(2) + '%</div>'
-      +   '<div class="etf-price">' + q.price.toFixed(3) + '</div></div>'
+      +   '<div style="text-align:right"><div class="etf-change ' + changeClass + '">' + changeSign + qc.toFixed(2) + '%</div>'
+      +   '<div class="etf-price">' + qp.toFixed(3) + '</div></div>'
       + '</div>'
       + '<div class="etf-tags">'
       +   '<span class="tag tag-sector">' + escHtml(q.sector || '') + '</span>'
@@ -1152,8 +1154,8 @@ function showETFModal(etf) {
   document.getElementById('etf-modal-info').innerHTML =
     '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">'
     + '<span class="tag tag-sector">' + escHtml(etf.sector || '') + '</span>'
-    + '<span style="font-size:22px;font-weight:700" class="' + changeClass + '">' + etf.price.toFixed(3) + '</span>'
-    + '<span style="font-size:16px;font-weight:600" class="' + changeClass + '">' + changeSign + etf.change.toFixed(2) + '%</span>'
+    + '<span style="font-size:22px;font-weight:700" class="' + changeClass + '">' + (etf.price || 0).toFixed(3) + '</span>'
+    + '<span style="font-size:16px;font-weight:600" class="' + changeClass + '">' + changeSign + (etf.change || 0).toFixed(2) + '%</span>'
     + '<span class="tag tag-signal ' + (etf.signal || 'wait') + '">' + signalLabel + '</span>'
     + '</div>';
 
@@ -1462,8 +1464,8 @@ function drawDecisions() {
       var warnings = (d.warnings || []).map(function(w) { return '<span class="warn-badge">' + escHtml(w.length > 30 ? w.slice(0, 30) + '...' : w) + '</span>'; }).join('');
       html += '<tr>'
         + '<td><b>' + escHtml(d.name) + '</b><br><span style="font-size:11px;color:var(--text-muted)">' + d.code + '</span></td>'
-        + '<td style="font-variant-numeric:tabular-nums">' + d.price.toFixed(3) + '</td>'
-        + '<td class="' + changeClass + '" style="font-weight:600;font-variant-numeric:tabular-nums">' + changeSign + d.change.toFixed(2) + '%</td>'
+        + '<td style="font-variant-numeric:tabular-nums">' + (d.price || 0).toFixed(3) + '</td>'
+        + '<td class="' + changeClass + '" style="font-weight:600;font-variant-numeric:tabular-nums">' + changeSign + (d.change || 0).toFixed(2) + '%</td>'
         + '<td><span class="tag tag-signal ' + signalClass + '">' + signalLabel + '</span></td>'
         + '<td><span class="confidence-badge ' + confClass + '">' + (d.final_confidence || d.confidence || '--') + '</span></td>'
         + '<td><span class="trend-indicator ' + trendClass + '">' + trendArrow + ' ' + strength + '</span></td>'
@@ -1509,8 +1511,8 @@ function renderExecution(exec) {
       +   '<span class="tag" style="font-variant-numeric:tabular-nums">' + inst.code + '.' + inst.exchange + '</span>'
       + '</div>'
       + '<div class="inst-details">'
-      +   '<div class="inst-detail"><div class="detail-label">价格</div><div class="detail-value">' + inst.price.toFixed(3) + '</div></div>'
-      +   '<div class="inst-detail"><div class="detail-label">涨跌</div><div class="detail-value ' + (inst.change > 0 ? 'up' : inst.change < 0 ? 'down' : '') + '">' + (inst.change > 0 ? '+' : '') + inst.change.toFixed(2) + '%</div></div>'
+      +   '<div class="inst-detail"><div class="detail-label">价格</div><div class="detail-value">' + (inst.price || 0).toFixed(3) + '</div></div>'
+      +   '<div class="inst-detail"><div class="detail-label">涨跌</div><div class="detail-value ' + ((inst.change || 0) > 0 ? 'up' : (inst.change || 0) < 0 ? 'down' : '') + '">' + ((inst.change || 0) > 0 ? '+' : '') + (inst.change || 0).toFixed(2) + '%</div></div>'
       +   '<div class="inst-detail"><div class="detail-label">数量</div><div class="detail-value">' + inst.quantity + ' 份</div></div>'
       +   '<div class="inst-detail"><div class="detail-label">金额</div><div class="detail-value">' + formatMoney(scaleMoney(inst.amount)) + '</div></div>'
       +   '<div class="inst-detail"><div class="detail-label">趋势</div><div class="detail-value">' + (inst.trend === 'up' ? '<span class="trend-up">&#9650; 上升</span>' : '<span class="trend-down">&#9660; 下降</span>') + '</div></div>'

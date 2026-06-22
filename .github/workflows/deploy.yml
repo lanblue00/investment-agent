@@ -1,9 +1,9 @@
 name: Deploy Dashboard
 
 on:
-  # 每个交易日 16:00 CST (08:00 UTC) 自动运行
+  # 每个交易日 12:00 + 16:00 CST (04:00 + 08:00 UTC) 自动运行
   schedule:
-    - cron: '0 8 * * 1-5'
+    - cron: '0 4,8 * * 1-5'
   # 手动触发
   workflow_dispatch:
 
