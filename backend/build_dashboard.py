@@ -142,7 +142,7 @@ export default {{
           }});
         }}
         const aiResp = await fetch(
-          'https://api.cloudflare.com/client/v4/accounts/{cf_account_id}/ai/run/@cf/qwen/qwen2.5-72b-instruct',
+          'https://api.cloudflare.com/client/v4/accounts/{cf_account_id}/ai/run/@cf/qwen/qwen2.5-coder-32b-instruct',
           {{
             method: 'POST',
             headers: {{
