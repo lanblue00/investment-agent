@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -123,6 +124,18 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 """
         html_output = html_output.replace("</head>", f"{static_style}\n</head>")
+
+    # 注入 AI 聊天凭据（从环境变量读取）
+    cf_ai_token = os.environ.get("CF_AI_TOKEN", "")
+    cf_account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "02d85fe7929a981a11752af570010576")
+    ai_creds_script = f"""
+<script>
+window.__CF_AI_TOKEN__ = '{cf_ai_token}';
+window.__CF_ACCOUNT_ID__ = '{cf_account_id}';
+</script>
+"""
+    # 注入到 </body> 前面，确保在聊天脚本之前
+    html_output = html_output.replace("</body>", f"{ai_creds_script}\n</body>")
 
     # 写入输出文件
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

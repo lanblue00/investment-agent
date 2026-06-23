@@ -28,6 +28,9 @@ jobs:
 
       - name: Build static Dashboard
         run: python backend/build_dashboard.py
+        env:
+          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
