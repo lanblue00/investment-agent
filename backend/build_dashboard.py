@@ -77,8 +77,8 @@ def embed_data():
             status: 200, headers: {'Content-Type': 'application/json'}
           }));
         }
-        // 其他API（搜索/添加/删除）→ 提示静态模式
-        if (url.includes('/api/')) {
+        // 其他API（搜索/添加/删除）→ 提示静态模式，但 /api/chat 放行
+        if (url.includes('/api/') && !url.includes('/api/chat')) {
           return Promise.resolve(new Response(JSON.stringify({error:'static_mode'}), {
             status: 503, headers: {'Content-Type': 'application/json'}
           }));
@@ -125,17 +125,49 @@ document.addEventListener('DOMContentLoaded', function() {
 """
         html_output = html_output.replace("</head>", f"{static_style}\n</head>")
 
-    # 注入 AI 聊天凭据（从环境变量读取）
-    cf_ai_token = os.environ.get("CF_AI_TOKEN", "")
+    # 生成 _worker.js 用于 Cloudflare Pages Advanced Mode
+    cf_api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
     cf_account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "02d85fe7929a981a11752af570010576")
-    ai_creds_script = f"""
-<script>
-window.__CF_AI_TOKEN__ = '{cf_ai_token}';
-window.__CF_ACCOUNT_ID__ = '{cf_account_id}';
-</script>
+    worker_js = f"""
+export default {{
+  async fetch(request, env) {{
+    const url = new URL(request.url);
+    if (url.pathname === '/api/chat' && request.method === 'POST') {{
+      try {{
+        const {{ messages }} = await request.json();
+        if (!messages || !Array.isArray(messages)) {{
+          return new Response(JSON.stringify({{ error: 'messages required' }}), {{
+            status: 400, headers: {{ 'Content-Type': 'application/json' }}
+          }});
+        }}
+        const aiResp = await fetch(
+          'https://api.cloudflare.com/client/v4/accounts/{cf_account_id}/ai/run/@cf/qwen/qwen2.5-72b-instruct',
+          {{
+            method: 'POST',
+            headers: {{
+              'Authorization': 'Bearer {cf_api_token}',
+              'Content-Type': 'application/json',
+            }},
+            body: JSON.stringify({{ messages, max_tokens: 2048 }}),
+          }}
+        );
+        const aiData = await aiResp.json();
+        return new Response(JSON.stringify(aiData), {{
+          status: aiResp.status, headers: {{ 'Content-Type': 'application/json' }}
+        }});
+      }} catch (err) {{
+        return new Response(JSON.stringify({{ success: false, error: err.message || 'AI request failed' }}), {{
+          status: 500, headers: {{ 'Content-Type': 'application/json' }}
+        }});
+      }}
+    }}
+    return env.ASSETS.fetch(request);
+  }}
+}};
 """
-    # 注入到 </body> 前面，确保在聊天脚本之前
-    html_output = html_output.replace("</body>", f"{ai_creds_script}\n</body>")
+    worker_path = OUTPUT_PATH.parent / "_worker.js"
+    with open(worker_path, "w", encoding="utf-8") as f:
+        f.write(worker_js.strip())
 
     # 写入输出文件
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
