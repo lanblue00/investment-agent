@@ -126,7 +126,8 @@ document.addEventListener('DOMContentLoaded', function() {
         html_output = html_output.replace("</head>", f"{static_style}\n</head>")
 
     # 生成 _worker.js 用于 Cloudflare Pages Advanced Mode
-    cf_api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    # CF_AI_TOKEN: 专门用于 Workers AI 的令牌（Read+Edit权限）
+    cf_ai_token = os.environ.get("CF_AI_TOKEN", "")
     cf_account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "02d85fe7929a981a11752af570010576")
     worker_js = f"""
 export default {{
@@ -145,7 +146,7 @@ export default {{
           {{
             method: 'POST',
             headers: {{
-              'Authorization': 'Bearer {cf_api_token}',
+              'Authorization': 'Bearer {cf_ai_token}',
               'Content-Type': 'application/json',
             }},
             body: JSON.stringify({{ messages, max_tokens: 2048 }}),
