@@ -13,6 +13,42 @@ PROJECT_DIR = BACKEND_DIR.parent
 TEMPLATE_PATH = PROJECT_DIR / "frontend" / "dashboard.html"
 JSON_PATH = PROJECT_DIR / "output" / "latest_report.json"
 OUTPUT_PATH = PROJECT_DIR / "output" / "index.html"
+REPORTS_DIR = PROJECT_DIR / "data" / "reports"
+REPORTS_INDEX = REPORTS_DIR / "index.json"
+MAX_REPORTS = 30
+
+
+def load_reports():
+    """从 data/reports/ 读取诊断报告列表（最近30份）"""
+    reports = {"list": [], "count": 0}
+    if not REPORTS_INDEX.exists():
+        print("[报告] 无报告索引文件")
+        return reports
+    try:
+        with open(REPORTS_INDEX, "r", encoding="utf-8") as f:
+            index = json.load(f)
+    except Exception as e:
+        print(f"[报告] 读取索引失败: {e}")
+        return reports
+    # 取最近 MAX_REPORTS 份
+    for item in index[:MAX_REPORTS]:
+        md_path = REPORTS_DIR / item.get("file", "")
+        content = ""
+        if md_path.exists():
+            try:
+                content = md_path.read_text(encoding="utf-8")
+            except Exception:
+                content = "（报告内容读取失败）"
+        reports["list"].append({
+            "date": item.get("date", ""),
+            "file": item.get("file", ""),
+            "title": item.get("title", ""),
+            "summary": item.get("summary", ""),
+            "content": content,
+        })
+    reports["count"] = len(reports["list"])
+    print(f"[报告] 加载 {reports['count']} 份诊断报告")
+    return reports
 
 
 def embed_data():
@@ -26,6 +62,9 @@ def embed_data():
 
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         report_data = json.load(f)
+
+    # 加载诊断报告（从 data/reports/）
+    report_data["reports"] = load_reports()
 
     # 读取HTML模板
     if not TEMPLATE_PATH.exists():
