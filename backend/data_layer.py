@@ -6,6 +6,7 @@
 import json
 import sys
 import os
+import time
 import requests
 from pathlib import Path
 
@@ -330,44 +331,54 @@ def _get_otc_nav(code: str) -> dict:
     return {"nav": 0, "nav_date": "", "estimated_nav": 0, "estimated_change_pct": 0, "name": "", "source": "none"}
 
 
-def _get_otc_history_nav(code: str, limit: int = 30) -> list:
+def _get_otc_history_nav(code: str, limit: int = 60) -> list:
     """
     从东方财富获取场外基金历史净值（替代K线数据）
+    支持分页获取，每页最多20条
     返回: [{date, nav, change_pct}, ...]
     """
     url = "http://api.fund.eastmoney.com/f10/lsjz"
-    params = {
-        "fundCode": code,
-        "pageIndex": 1,
-        "pageSize": limit,
-    }
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Referer": "https://fundf10.eastmoney.com/",
     }
+    all_klines = []
+    page_size = 20  # API每页最大20条
+    page = 1
     try:
-        resp = requests.get(url, params=params, headers=headers, timeout=15)
-        data = resp.json()
-        history = data.get("Data", {}).get("LSJZList", [])
-        klines = []
-        for item in history:
-            nav = item.get("DWJZ", "")
-            change_pct = item.get("JZZZL", "")
-            date = item.get("FSRQ", "")
-            if nav and date:
-                klines.append({
-                    "date": date,
-                    "open": float(nav),
-                    "close": float(nav),
-                    "high": float(nav),
-                    "low": float(nav),
-                    "volume": 0,
-                    "nav": float(nav),
-                    "change_pct": float(change_pct) if change_pct else 0,
-                })
-        return klines
+        while len(all_klines) < limit:
+            params = {
+                "fundCode": code,
+                "pageIndex": page,
+                "pageSize": page_size,
+            }
+            resp = requests.get(url, params=params, headers=headers, timeout=15)
+            data = resp.json()
+            history = data.get("Data", {}).get("LSJZList", [])
+            if not history:
+                break
+            for item in history:
+                nav = item.get("DWJZ", "")
+                change_pct = item.get("JZZZL", "")
+                date = item.get("FSRQ", "")
+                if nav and date:
+                    all_klines.append({
+                        "date": date,
+                        "open": float(nav),
+                        "close": float(nav),
+                        "high": float(nav),
+                        "low": float(nav),
+                        "volume": 0,
+                        "nav": float(nav),
+                        "change_pct": float(change_pct) if change_pct else 0,
+                    })
+            if len(history) < page_size:
+                break  # 最后一页
+            page += 1
+            time.sleep(0.3)  # 限速
+        return all_klines[:limit]
     except Exception:
-        return []
+        return all_klines
 
 
 def get_otc_fund_data(code: str) -> dict:
@@ -376,7 +387,7 @@ def get_otc_fund_data(code: str) -> dict:
     返回: {price, prev_close, change, nav, nav_date, kline, ...}
     """
     nav_data = _get_otc_nav(code)
-    history = _get_otc_history_nav(code, limit=30)
+    history = _get_otc_history_nav(code, limit=60)
 
     price = nav_data.get("estimated_nav", 0) or nav_data.get("nav", 0)
     change_pct = nav_data.get("estimated_change_pct", 0)
