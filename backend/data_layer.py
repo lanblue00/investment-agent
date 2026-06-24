@@ -472,8 +472,34 @@ def collect_data() -> dict:
         if holding_amount > 0:
             nav = q.get("nav") or q.get("price", 0)
             shares = round(holding_amount / nav, 2) if nav > 0 else 0
-            cost_nav = nav  # 简化：假设成本净值等于当前净值（实际应从买入记录计算）
-            profit_pct = q.get("change_pct", 0)  # 简化：用当日涨跌幅近似
+            
+            # 从历史K线/净值数据计算成本价和盈亏
+            kline_data = q.get("kline", [])
+            cost_nav = nav  # 默认当前净值
+            day_profit = 0
+            total_profit = 0
+            
+            if kline_data and len(kline_data) >= 2:
+                # 取最近一条作为今日净值，第二条作为昨日净值
+                today_nav = kline_data[0].get("nav") or kline_data[0].get("close", nav)
+                yesterday_nav = kline_data[1].get("nav") or kline_data[1].get("close", nav)
+                
+                # 当日盈亏 = (今日净值 - 昨日净值) * 份额
+                if yesterday_nav > 0:
+                    day_profit = round((today_nav - yesterday_nav) * shares, 2)
+                
+                # 简化：假设成本价为7日前的净值（实际应从买入记录获取）
+                if len(kline_data) >= 8:
+                    cost_nav = kline_data[7].get("nav") or kline_data[7].get("close", nav)
+                    total_profit = round((today_nav - cost_nav) * shares, 2)
+                else:
+                    # 如果历史数据不足，用今日涨跌幅估算累计盈亏
+                    change_pct = q.get("change_pct", 0)
+                    if change_pct != 0:
+                        estimated_cost = holding_amount / (1 + change_pct / 100)
+                        total_profit = round(holding_amount - estimated_cost, 2)
+            
+            profit_pct = q.get("change_pct", 0)
             q["position"] = {
                 "shares": shares,
                 "cost_price": cost_nav,
@@ -481,6 +507,8 @@ def collect_data() -> dict:
                 "profit_pct": profit_pct,
                 "available": shares,
                 "holding_amount": holding_amount,
+                "day_profit": day_profit,
+                "total_profit": total_profit,
             }
         else:
             q["position"] = None
@@ -523,6 +551,38 @@ def collect_data() -> dict:
     print("[L1 数据层] 获取账户信息...")
     balance = get_account_balance()
     positions = get_positions()
+    
+    # 始终使用 USER_HOLDINGS 构建虚拟 balance（忽略华泰API返回的模拟盘数据）
+    # 因为华泰API返回的是初始100万模拟资金，与用户真实持仓不符
+    INITIAL_CAPITAL = 10000.00  # 用户初始资金固定为10,000元
+    total_holding_value = sum(USER_HOLDINGS.values()) if USER_HOLDINGS else 0
+    available_balance = round(INITIAL_CAPITAL - total_holding_value, 2)  # 可用余额 = 初始资金 - 总持仓
+    
+    # 汇总所有持仓的盈亏
+    total_day_profit = 0
+    total_profit = 0
+    for q in quotes:
+        pos = q.get("position")
+        if pos and pos.get("day_profit") is not None:
+            total_day_profit += pos["day_profit"]
+        if pos and pos.get("total_profit") is not None:
+            total_profit += pos["total_profit"]
+    
+    day_profit_pct = (total_day_profit / total_holding_value * 100) if total_holding_value > 0 else 0
+    total_profit_pct = (total_profit / total_holding_value * 100) if total_holding_value > 0 else 0
+    
+    balance = {
+        "totalAssets": INITIAL_CAPITAL,  # 总资产固定为初始资金10,000元
+        "availableBalance": max(available_balance, 0),
+        "frozenAmount": 0,
+        "market_value": total_holding_value,
+        "dayProfit": total_day_profit,
+        "dayProfitPct": round(day_profit_pct, 2),
+        "totalProfit": total_profit,
+        "totalProfitPct": round(total_profit_pct, 2),
+        "source": "USER_HOLDINGS",
+    }
+    print(f"[L1] 虚拟账户: 总资产={balance['totalAssets']}, 持仓={total_holding_value:.2f}, 可用={balance['availableBalance']}, 日盈={balance['dayProfit']}")
 
     # 构建持仓映射
     position_map = {}
@@ -531,7 +591,6 @@ def collect_data() -> dict:
         position_map[key] = pos
 
     # 合并持仓到行情（USER_HOLDINGS 优先，API 持仓作为补充）
-    total_holding_value = 0
     for q in quotes:
         key = f"{q['code']}_{q['exchange']}"
         # 如果已有 USER_HOLDINGS 注入的持仓，保留；否则尝试 API 持仓
@@ -545,18 +604,6 @@ def collect_data() -> dict:
                 "profit": p.get("profit", 0),
                 "profit_pct": p.get("profitPct", 0),
             }
-        # 累计持仓总市值（用于风险层集中度计算）
-        if q.get("position") and q["position"].get("market_value", 0) > 0:
-            total_holding_value += q["position"]["market_value"]
-
-    # 如果 balance 为空（无华泰API），用 USER_HOLDINGS 构建虚拟 balance
-    if not balance or balance.get("totalAssets", 0) <= 0:
-        balance = {
-            "totalAssets": round(total_holding_value * 1.1, 2),  # 假设10%可用资金
-            "available": round(total_holding_value * 0.1, 2),
-            "market_value": total_holding_value,
-            "source": "USER_HOLDINGS",
-        }
 
     # 确定实际交易日（K线最后一天的日期，非当天日期）
     from datetime import datetime
