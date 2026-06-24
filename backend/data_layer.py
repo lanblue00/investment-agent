@@ -274,40 +274,181 @@ def get_trade_date(quotes: list) -> str:
     return today
 
 
+# ==================== 场外基金净值获取 ====================
+
+def _get_otc_nav(code: str) -> dict:
+    """
+    从东方财富获取场外基金最新净值和估算净值
+    返回: {nav, nav_date, estimated_nav, estimated_change_pct, name}
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://fund.eastmoney.com/",
+    }
+
+    # 接口1: 基金实时估值API（盘中返回估算值，盘后返回最新确认净值）
+    url = f"https://fundgz.1234567.com.cn/js/{code}.js"
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        text = resp.text.strip()
+        # 格式: jsonpgz({...});
+        if text.startswith("jsonpgz(") and text.endswith(");"):
+            import json as _json
+            data = _json.loads(text[8:-2])
+            gsz = float(data.get("gsz", 0))
+            gszzl = float(data.get("gszzl", 0))
+            jzrq = data.get("jzrq", "")
+            name = data.get("name", "")
+            if gsz > 0:
+                return {
+                    "nav": gsz,
+                    "nav_date": jzrq,
+                    "estimated_nav": gsz,
+                    "estimated_change_pct": gszzl,
+                    "name": name,
+                    "source": "estimated",
+                }
+    except Exception:
+        pass
+
+    # 接口2: 历史净值API取最新一条作为确认净值
+    try:
+        history = _get_otc_history_nav(code, limit=1)
+        if history:
+            latest = history[0]
+            return {
+                "nav": latest["nav"],
+                "nav_date": latest["date"],
+                "estimated_nav": latest["nav"],
+                "estimated_change_pct": latest.get("change_pct", 0),
+                "name": "",
+                "source": "confirmed",
+            }
+    except Exception:
+        pass
+
+    return {"nav": 0, "nav_date": "", "estimated_nav": 0, "estimated_change_pct": 0, "name": "", "source": "none"}
+
+
+def _get_otc_history_nav(code: str, limit: int = 30) -> list:
+    """
+    从东方财富获取场外基金历史净值（替代K线数据）
+    返回: [{date, nav, change_pct}, ...]
+    """
+    url = "http://api.fund.eastmoney.com/f10/lsjz"
+    params = {
+        "fundCode": code,
+        "pageIndex": 1,
+        "pageSize": limit,
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://fundf10.eastmoney.com/",
+    }
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        data = resp.json()
+        history = data.get("Data", {}).get("LSJZList", [])
+        klines = []
+        for item in history:
+            nav = item.get("DWJZ", "")
+            change_pct = item.get("JZZZL", "")
+            date = item.get("FSRQ", "")
+            if nav and date:
+                klines.append({
+                    "date": date,
+                    "open": float(nav),
+                    "close": float(nav),
+                    "high": float(nav),
+                    "low": float(nav),
+                    "volume": 0,
+                    "nav": float(nav),
+                    "change_pct": float(change_pct) if change_pct else 0,
+                })
+        return klines
+    except Exception:
+        return []
+
+
+def get_otc_fund_data(code: str) -> dict:
+    """
+    获取场外基金完整数据（净值 + 历史净值）
+    返回: {price, prev_close, change, nav, nav_date, kline, ...}
+    """
+    nav_data = _get_otc_nav(code)
+    history = _get_otc_history_nav(code, limit=30)
+
+    price = nav_data.get("estimated_nav", 0) or nav_data.get("nav", 0)
+    change_pct = nav_data.get("estimated_change_pct", 0)
+
+    # 从历史数据计算 prev_close（前一天的净值）
+    prev_close = 0
+    if history and len(history) >= 2:
+        prev_close = history[1].get("nav", history[1].get("close", 0))
+
+    # 计算 change 绝对值
+    change = 0
+    if prev_close > 0 and price > 0:
+        change = round(price - prev_close, 4)
+
+    return {
+        "price": price,
+        "prev_close": prev_close,
+        "change": change,
+        "change_pct": change_pct,
+        "nav": nav_data.get("nav", 0),
+        "nav_date": nav_data.get("nav_date", ""),
+        "nav_source": nav_data.get("source", "none"),
+        "kline": history,
+        "fund_type": "场外",
+    }
+
+
 # ==================== L1 主入口 ====================
 
 def collect_data() -> dict:
     """
     L1 数据层主入口
-    获取所有ETF(预设+自定义)实时行情 + K线历史 + 账户信息 + 持仓
+    获取所有ETF/场外基金行情 + 历史净值/K线 + 账户信息 + 持仓
     返回结构化数据字典
     """
     print("[L1 数据层] 开始采集行情数据...")
 
     # 获取完整ETF列表（预设 + 自定义）
     all_etfs = get_all_etfs()
-    print(f"[L1 数据层] 共 {len(all_etfs)} 只ETF "
+    print(f"[L1 数据层] 共 {len(all_etfs)} 只基金 "
           f"(预设 {len(ETF_POOL)}, 自定义 {len(all_etfs) - len(ETF_POOL)})")
 
-    # 获取所有ETF实时行情
+    # 获取所有基金行情（场内ETF实时行情 + 场外基金净值）
     quotes = []
-    for etf in all_etfs:
+    import time as _time
+    for idx, etf in enumerate(all_etfs):
         exchange = etf.get("exchange", "")
         if exchange == "OTC":
-            # 场外基金：无法通过场内API获取实时行情，设置默认值
+            # 场外基金：获取净值数据（限速0.5s避免被封）
+            if idx > 0:
+                _time.sleep(0.5)
+            otc_data = get_otc_fund_data(etf["code"])
             q = {
                 "code": etf["code"],
-                "name": etf["name"],
                 "exchange": "OTC",
-                "price": 0,
-                "change": 0,
+                "name": etf["name"],
+                "price": otc_data["price"],
+                "prev_close": otc_data["prev_close"],
+                "change": otc_data["change"],
+                "change_pct": otc_data["change_pct"],
+                "nav": otc_data["nav"],
+                "nav_date": otc_data["nav_date"],
+                "nav_source": otc_data["nav_source"],
                 "volume": 0,
                 "suspended": False,
                 "fund_type": "场外",
-                "note": "场外基金，请在券商APP查看净值",
+                "kline": otc_data["kline"],
             }
+            status = "OK" if otc_data["price"] > 0 else "NO_DATA"
         else:
             q = get_realtime_quote(etf["code"], exchange)
+            status = "OK" if "error" not in q else f"ERR: {q.get('error', 'unknown')}"
         # 补充ETF元信息（name 优先用API返回的，失败时用预设名称）
         if not q.get("name") or q["name"] == q["code"]:
             q["name"] = etf["name"]
@@ -315,22 +456,26 @@ def collect_data() -> dict:
         q["company"] = etf.get("company", "")
         q["is_custom"] = etf.get("is_custom", False)
         quotes.append(q)
-        status = "OK" if "error" not in q else f"ERR: {q.get('error', 'unknown')}"
-        if exchange == "OTC":
-            status = "SKIP(场外)"
         custom_tag = " [custom]" if etf.get("is_custom") else ""
         print(f"  {etf['code']} {etf['name']}: {status}{custom_tag}")
 
-    # 获取K线历史数据（真实数据，腾讯财经主 + 东方财富备）
-    print("[L1 数据层] 获取K线历史数据...")
+    # 获取K线/历史净值数据
+    print("[L1 数据层] 获取历史数据...")
     trade_date = None
     for i, etf in enumerate(all_etfs):
         exchange = etf.get("exchange", "")
         if exchange == "OTC":
-            # 场外基金没有K线数据
-            quotes[i]["kline"] = []
-            print(f"  {etf['code']} K-line: SKIP(场外)")
+            # 场外基金：使用已获取的历史净值数据
+            klines = quotes[i].get("kline", [])
+            quotes[i]["kline"] = klines
+            if klines:
+                last_date = klines[0]["date"]
+                if trade_date is None:
+                    trade_date = last_date
+            status = f"{len(klines)} bars" if klines else "no data"
+            print(f"  {etf['code']} 历史净值: {status}")
             continue
+        # 场内ETF：获取K线数据
         if i > 0:
             import time as _time
             _time.sleep(0.3)  # 限速，避免被API拒绝
@@ -338,7 +483,6 @@ def collect_data() -> dict:
         quotes[i]["kline"] = klines
         if klines:
             last_date = klines[-1]["date"]
-            # 用第一只有K线数据的ETF确定交易日
             if trade_date is None:
                 trade_date = last_date
         status = f"{len(klines)} bars" if klines else "no data"
@@ -382,7 +526,7 @@ def collect_data() -> dict:
         "balance": balance,
         "positions": positions,
         "etf_count": len(quotes),
-        "success_count": sum(1 for q in quotes if "error" not in q),
+        "success_count": sum(1 for q in quotes if "error" not in q and q.get("price", 0) > 0),
         "trade_date": trade_date,
         "is_realtime": (trade_date == today),
     }

@@ -789,9 +789,6 @@ function renderAll() {
   renderMeta(R.meta);
   renderWarnings(R.risk, R.summary);
   renderBalance(R.data.balance);
-  renderGaugeChart(R.info.market_score, R.info.market_mood);
-  renderSignalChart(R.decisions.signal_counts);
-  renderSectorChart(R.info.sector_scores);
   renderHotSectors(R.info.hot_sectors);
   renderNewsSummary(R.info);
   renderETFBoard(R.data.quotes, R.decisions.decisions);
@@ -807,6 +804,16 @@ function renderAll() {
   if (R.execution.actionable_count > 0) { eb.textContent = R.execution.actionable_count; eb.style.display = 'flex'; }
   const rb = document.getElementById('report-badge');
   if (R.reports && R.reports.count > 0) { rb.textContent = R.reports.count; rb.style.display = 'flex'; }
+  // 延迟渲染图表，避免阻塞主线程
+  requestAnimationFrame(function() {
+    renderGaugeChart(R.info.market_score, R.info.market_mood);
+    requestAnimationFrame(function() {
+      renderSignalChart(R.decisions.signal_counts);
+      requestAnimationFrame(function() {
+        renderSectorChart(R.info.sector_scores);
+      });
+    });
+  });
 }
 
 // ---- Meta ----
@@ -1337,7 +1344,9 @@ function showETFModal(etf) {
   var kData;
   if (etf.kline && etf.kline.length > 0) {
     // Real data from East Money: {date, open, close, high, low, volume, amount, change_pct}
-    kData = etf.kline.map(function(k) {
+    // API返回最新日期在前，需要反转为 chronological order（左旧右新）
+    var reversedKline = etf.kline.slice().reverse();
+    kData = reversedKline.map(function(k) {
       // Convert date from "2026-06-22" to "06/22"
       var dateParts = k.date.split('-');
       var shortDate = dateParts[1] + '/' + dateParts[2];
@@ -1375,6 +1384,9 @@ function showETFModal(etf) {
   if (klineChart) klineChart.dispose();
   klineChart = echarts.init(chartEl, null, { renderer: 'canvas' });
 
+  // 场外基金使用折线图（只有净值数据，无OHLC），场内ETF使用K线图
+  var isOTC = etf.exchange === 'OTC';
+
   var option = {
     backgroundColor: 'transparent',
     tooltip: {
@@ -1385,104 +1397,159 @@ function showETFModal(etf) {
       textStyle: { color: '#e4e6eb', fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif', fontSize: 12 }
     },
     legend: {
-      data: ['MA5', 'MA10', 'MA20'],
+      data: isOTC ? ['净值', 'MA5', 'MA10', 'MA20'] : ['MA5', 'MA10', 'MA20'],
       top: 0,
       textStyle: { color: '#8b8fa3', fontSize: 11 },
       itemWidth: 14,
       itemHeight: 2
     },
-    grid: [
-      { left: 65, right: 20, top: 40, height: '54%' },
-      { left: 65, right: 20, top: '74%', height: '16%' }
-    ],
-    xAxis: [
-      {
-        type: 'category', data: dates, gridIndex: 0,
-        axisLine: { lineStyle: { color: '#2a2e3f' } },
-        axisLabel: { color: '#8b8fa3', fontSize: 10 },
-        axisTick: { show: false },
-        boundaryGap: true,
-        min: 'dataMin', max: 'dataMax'
-      },
-      {
-        type: 'category', data: dates, gridIndex: 1,
-        axisLine: { lineStyle: { color: '#2a2e3f' } },
-        axisLabel: { show: false },
-        axisTick: { show: false },
-        boundaryGap: true,
-        min: 'dataMin', max: 'dataMax'
-      }
-    ],
-    yAxis: [
-      {
-        scale: true, gridIndex: 0,
-        axisLine: { show: false },
-        axisTick: { show: false },
-        axisLabel: { color: '#8b8fa3', fontSize: 11 },
-        splitLine: { lineStyle: { color: '#1e2130' } }
-      },
-      {
-        scale: true, gridIndex: 1, splitNumber: 2,
-        axisLine: { show: false },
-        axisTick: { show: false },
-        axisLabel: {
-          color: '#8b8fa3', fontSize: 10,
-          formatter: function(v) {
-            if (v >= 10000) return (v / 10000).toFixed(0) + '万';
-            return v;
+    grid: isOTC
+      ? [{ left: 65, right: 20, top: 40, bottom: 40 }]
+      : [
+          { left: 65, right: 20, top: 40, height: '54%' },
+          { left: 65, right: 20, top: '74%', height: '16%' }
+        ],
+    xAxis: isOTC
+      ? [{
+          type: 'category', data: dates,
+          axisLine: { lineStyle: { color: '#2a2e3f' } },
+          axisLabel: { color: '#8b8fa3', fontSize: 10 },
+          axisTick: { show: false },
+          boundaryGap: false
+        }]
+      : [
+          {
+            type: 'category', data: dates, gridIndex: 0,
+            axisLine: { lineStyle: { color: '#2a2e3f' } },
+            axisLabel: { color: '#8b8fa3', fontSize: 10 },
+            axisTick: { show: false },
+            boundaryGap: true,
+            min: 'dataMin', max: 'dataMax'
+          },
+          {
+            type: 'category', data: dates, gridIndex: 1,
+            axisLine: { lineStyle: { color: '#2a2e3f' } },
+            axisLabel: { show: false },
+            axisTick: { show: false },
+            boundaryGap: true,
+            min: 'dataMin', max: 'dataMax'
           }
-        },
-        splitLine: { lineStyle: { color: '#1e2130' } }
-      }
-    ],
-    dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
-      {
-        type: 'slider', xAxisIndex: [0, 1], bottom: 5, height: 16,
-        borderColor: '#2a2e3f', fillerColor: 'rgba(52,152,219,0.15)',
-        handleStyle: { color: '#3498db' },
-        textStyle: { color: '#8b8fa3', fontSize: 10 }
-      }
-    ],
-    series: [
-      {
-        name: 'K线',
-        type: 'candlestick',
-        data: ohlc,
-        xAxisIndex: 0, yAxisIndex: 0,
-        itemStyle: {
-          color: '#e74c3c',
-          color0: '#2ecc71',
-          borderColor: '#e74c3c',
-          borderColor0: '#2ecc71'
-        }
-      },
-      {
-        name: 'MA5', type: 'line', data: ma5,
-        xAxisIndex: 0, yAxisIndex: 0,
-        smooth: true, symbol: 'none',
-        lineStyle: { width: 1, color: '#f1c40f' }
-      },
-      {
-        name: 'MA10', type: 'line', data: ma10,
-        xAxisIndex: 0, yAxisIndex: 0,
-        smooth: true, symbol: 'none',
-        lineStyle: { width: 1, color: '#3498db' }
-      },
-      {
-        name: 'MA20', type: 'line', data: ma20,
-        xAxisIndex: 0, yAxisIndex: 0,
-        smooth: true, symbol: 'none',
-        lineStyle: { width: 1, color: '#9b59b6' }
-      },
-      {
-        name: '成交量',
-        type: 'bar',
-        data: volumes,
-        xAxisIndex: 1, yAxisIndex: 1,
-        barWidth: '60%'
-      }
-    ]
+        ],
+    yAxis: isOTC
+      ? [{
+          scale: true,
+          axisLine: { show: false },
+          axisTick: { show: false },
+          axisLabel: { color: '#8b8fa3', fontSize: 11 },
+          splitLine: { lineStyle: { color: '#1e2130' } }
+        }]
+      : [
+          {
+            scale: true, gridIndex: 0,
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { color: '#8b8fa3', fontSize: 11 },
+            splitLine: { lineStyle: { color: '#1e2130' } }
+          },
+          {
+            scale: true, gridIndex: 1, splitNumber: 2,
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: {
+              color: '#8b8fa3', fontSize: 10,
+              formatter: function(v) {
+                if (v >= 10000) return (v / 10000).toFixed(0) + '万';
+                return v;
+              }
+            },
+            splitLine: { lineStyle: { color: '#1e2130' } }
+          }
+        ],
+    dataZoom: isOTC
+      ? [{ type: 'inside', start: 0, end: 100 }]
+      : [
+          { type: 'inside', xAxisIndex: [0, 1], start: 0, end: 100 },
+          {
+            type: 'slider', xAxisIndex: [0, 1], bottom: 5, height: 16,
+            borderColor: '#2a2e3f', fillerColor: 'rgba(52,152,219,0.15)',
+            handleStyle: { color: '#3498db' },
+            textStyle: { color: '#8b8fa3', fontSize: 10 }
+          }
+        ],
+    series: isOTC
+      ? [
+          {
+            name: '净值',
+            type: 'line',
+            data: kData.map(function(d) { return d.close; }),
+            smooth: true,
+            symbol: 'none',
+            lineStyle: { width: 2, color: '#3498db' },
+            areaStyle: {
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgba(52,152,219,0.3)' },
+                  { offset: 1, color: 'rgba(52,152,219,0.02)' }
+                ]
+              }
+            }
+          },
+          {
+            name: 'MA5', type: 'line', data: ma5,
+            smooth: true, symbol: 'none',
+            lineStyle: { width: 1, color: '#f1c40f' }
+          },
+          {
+            name: 'MA10', type: 'line', data: ma10,
+            smooth: true, symbol: 'none',
+            lineStyle: { width: 1, color: '#3498db' }
+          },
+          {
+            name: 'MA20', type: 'line', data: ma20,
+            smooth: true, symbol: 'none',
+            lineStyle: { width: 1, color: '#9b59b6' }
+          }
+        ]
+      : [
+          {
+            name: 'K线',
+            type: 'candlestick',
+            data: ohlc,
+            xAxisIndex: 0, yAxisIndex: 0,
+            itemStyle: {
+              color: '#e74c3c',
+              color0: '#2ecc71',
+              borderColor: '#e74c3c',
+              borderColor0: '#2ecc71'
+            }
+          },
+          {
+            name: 'MA5', type: 'line', data: ma5,
+            xAxisIndex: 0, yAxisIndex: 0,
+            smooth: true, symbol: 'none',
+            lineStyle: { width: 1, color: '#f1c40f' }
+          },
+          {
+            name: 'MA10', type: 'line', data: ma10,
+            xAxisIndex: 0, yAxisIndex: 0,
+            smooth: true, symbol: 'none',
+            lineStyle: { width: 1, color: '#3498db' }
+          },
+          {
+            name: 'MA20', type: 'line', data: ma20,
+            xAxisIndex: 0, yAxisIndex: 0,
+            smooth: true, symbol: 'none',
+            lineStyle: { width: 1, color: '#9b59b6' }
+          },
+          {
+            name: '成交量',
+            type: 'bar',
+            data: volumes,
+            xAxisIndex: 1, yAxisIndex: 1,
+            barWidth: '60%'
+          }
+        ]
   };
 
   klineChart.setOption(option);

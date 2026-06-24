@@ -29,37 +29,38 @@ REQUEST_TIMEOUT = 30
 ANALYSIS_TIMEOUT = 120
 
 # ==================== ETF 池定义 ====================
+# 注意：以下配置为场外联接基金（exchange: OTC），与用户实际持仓一致
 
 ETF_POOL = [
     # --- 半导体 & 芯片 ---
-    {"code": "588170", "exchange": "SH", "name": "科创半导体ETF", "sector": "半导体", "company": "华夏"},   # ← 024418 华夏科创半导体ETF联接C
-    {"code": "159995", "exchange": "SZ", "name": "芯片ETF", "sector": "芯片", "company": "华夏"},          # ← 006502 财通集成电路(半导体方向)
+    {"code": "024418", "exchange": "OTC", "name": "华夏科创半导体ETF联接C", "sector": "半导体", "company": "华夏"},
+    {"code": "006502", "exchange": "OTC", "name": "财通集成电路产业股票A", "sector": "芯片", "company": "财通"},
 
     # --- 红利 ---
-    {"code": "562060", "exchange": "SH", "name": "红利ETF", "sector": "红利", "company": "华宝"},          # ← 005125 华宝红利机会ETF联接C
+    {"code": "005125", "exchange": "OTC", "name": "华宝标普中国A股红利机会ETF联接C", "sector": "红利", "company": "华宝"},
 
     # --- 创新药 ---
-    {"code": "159992", "exchange": "SZ", "name": "创新药ETF", "sector": "创新药", "company": "广发"},       # ← 012738 广发创新药ETF联接C
+    {"code": "012738", "exchange": "OTC", "name": "广发创新药ETF联接C", "sector": "创新药", "company": "广发"},
 
     # --- 通信 ---
-    {"code": "515880", "exchange": "SH", "name": "通信ETF", "sector": "5G通信", "company": "国泰"},         # ← 008087 华夏中证5G通信ETF联接C
+    {"code": "008087", "exchange": "OTC", "name": "华夏中证5G通信主题ETF联接C", "sector": "5G通信", "company": "华夏"},
 
     # --- AI 科技 ---
-    {"code": "159819", "exchange": "SZ", "name": "人工智能ETF", "sector": "AI算力", "company": ""},         # ← 026211 平安科技精选混合C(科技方向)
+    {"code": "026211", "exchange": "OTC", "name": "平安科技精选混合发起式C", "sector": "AI算力", "company": "平安"},
 
     # --- 宽基指数 ---
-    {"code": "588000", "exchange": "SH", "name": "科创50ETF", "sector": "宽基", "company": ""},             # ← 018177 华夏科创50指数增强A
-    {"code": "512500", "exchange": "SH", "name": "中证500ETF", "sector": "宽基", "company": "华夏"},        # ← 001052 华夏中证500ETF联接A
-    {"code": "510300", "exchange": "SH", "name": "沪深300ETF", "sector": "宽基", "company": ""},            # ← 110020 易方达沪深300ETF联接A
+    {"code": "018177", "exchange": "OTC", "name": "华夏科创50指数增强A", "sector": "宽基", "company": "华夏"},
+    {"code": "001052", "exchange": "OTC", "name": "华夏中证500ETF联接A", "sector": "宽基", "company": "华夏"},
+    {"code": "110020", "exchange": "OTC", "name": "易方达沪深300ETF联接A", "sector": "宽基", "company": "易方达"},
 
     # --- 美股 ---
-    {"code": "159632", "exchange": "SZ", "name": "纳斯达克ETF", "sector": "美股", "company": "华安"},       # ← 016453 南方纳斯达克100(QDII)C
+    {"code": "016453", "exchange": "OTC", "name": "南方纳斯达克100指数发起(QDII)C", "sector": "美股", "company": "南方"},
 
     # --- 券商 ---
-    {"code": "512000", "exchange": "SH", "name": "券商ETF", "sector": "券商", "company": "华宝"},           # ← 007531 华宝券商ETF联接C
+    {"code": "007531", "exchange": "OTC", "name": "华宝券商ETF联接C", "sector": "券商", "company": "华宝"},
 
-    # --- 黄金 ---
-    {"code": "518880", "exchange": "SH", "name": "黄金ETF", "sector": "黄金", "company": "华安"},           # ← 京东黄金积存金 1.0096克
+    # --- 混合基金 ---
+    {"code": "014915", "exchange": "OTC", "name": "财通匠心优选一年持有期混合A", "sector": "混合", "company": "财通"},
 ]
 
 # 板块分类
