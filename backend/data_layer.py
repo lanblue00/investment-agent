@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from config import (
     HT_APIKEY, BASE_URL, PAPER_TRADING_SKILL_CODE,
-    QUERY_INDICATOR_SKILL_CODE, ETF_POOL, REQUEST_TIMEOUT
+    QUERY_INDICATOR_SKILL_CODE, ETF_POOL, REQUEST_TIMEOUT, USER_HOLDINGS
 )
 from etf_manager import get_all_etfs
 
@@ -466,9 +466,29 @@ def collect_data() -> dict:
         q["sector"] = etf["sector"]
         q["company"] = etf.get("company", "")
         q["is_custom"] = etf.get("is_custom", False)
+
+        # 注入用户真实持仓数据
+        holding_amount = USER_HOLDINGS.get(etf["code"], 0)
+        if holding_amount > 0:
+            nav = q.get("nav") or q.get("price", 0)
+            shares = round(holding_amount / nav, 2) if nav > 0 else 0
+            cost_nav = nav  # 简化：假设成本净值等于当前净值（实际应从买入记录计算）
+            profit_pct = q.get("change_pct", 0)  # 简化：用当日涨跌幅近似
+            q["position"] = {
+                "shares": shares,
+                "cost_price": cost_nav,
+                "market_value": holding_amount,
+                "profit_pct": profit_pct,
+                "available": shares,
+                "holding_amount": holding_amount,
+            }
+        else:
+            q["position"] = None
+
         quotes.append(q)
+        holding_tag = f" [持仓: {holding_amount:.2f}元]" if holding_amount > 0 else ""
         custom_tag = " [custom]" if etf.get("is_custom") else ""
-        print(f"  {etf['code']} {etf['name']}: {status}{custom_tag}")
+        print(f"  {etf['code']} {etf['name']}: {status}{holding_tag}{custom_tag}")
 
     # 获取K线/历史净值数据
     print("[L1 数据层] 获取历史数据...")
@@ -510,10 +530,12 @@ def collect_data() -> dict:
         key = f"{pos.get('stockCode', '')}_{pos.get('exchange', '')}"
         position_map[key] = pos
 
-    # 合并持仓到行情
+    # 合并持仓到行情（USER_HOLDINGS 优先，API 持仓作为补充）
+    total_holding_value = 0
     for q in quotes:
         key = f"{q['code']}_{q['exchange']}"
-        if key in position_map:
+        # 如果已有 USER_HOLDINGS 注入的持仓，保留；否则尝试 API 持仓
+        if q.get("position") is None and key in position_map:
             p = position_map[key]
             q["position"] = {
                 "quantity": p.get("quantity", 0),
@@ -523,8 +545,18 @@ def collect_data() -> dict:
                 "profit": p.get("profit", 0),
                 "profit_pct": p.get("profitPct", 0),
             }
-        else:
-            q["position"] = None
+        # 累计持仓总市值（用于风险层集中度计算）
+        if q.get("position") and q["position"].get("market_value", 0) > 0:
+            total_holding_value += q["position"]["market_value"]
+
+    # 如果 balance 为空（无华泰API），用 USER_HOLDINGS 构建虚拟 balance
+    if not balance or balance.get("totalAssets", 0) <= 0:
+        balance = {
+            "totalAssets": round(total_holding_value * 1.1, 2),  # 假设10%可用资金
+            "available": round(total_holding_value * 0.1, 2),
+            "market_value": total_holding_value,
+            "source": "USER_HOLDINGS",
+        }
 
     # 确定实际交易日（K线最后一天的日期，非当天日期）
     from datetime import datetime
