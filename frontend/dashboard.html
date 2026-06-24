@@ -1581,11 +1581,11 @@ document.addEventListener('keydown', function(e) {
 
 // ---- News ----
 let newsData = [];
-let newsSortMode = 'score'; // 'score' or 'time'
+let newsSortMode = 'time'; // 'time' or 'score'
 
 function renderNews(news) {
   newsData = news || [];
-  drawNewsList(newsData, 'score-desc');
+  drawNewsList(newsData, 'time-desc');
 }
 
 function drawNewsList(data, sortKey) {
@@ -1594,6 +1594,7 @@ function drawNewsList(data, sortKey) {
     case 'score-desc': sorted.sort(function(a, b) { return b.score - a.score; }); break;
     case 'score-asc': sorted.sort(function(a, b) { return a.score - b.score; }); break;
     case 'time': sorted.sort(function(a, b) { return (a.time || '').localeCompare(b.time || ''); }); break;
+    case 'time-desc': sorted.sort(function(a, b) { return (b.time || '').localeCompare(a.time || ''); }); break;
   }
   var list = document.getElementById('news-list');
   list.innerHTML = sorted.map(function(n) {
@@ -1849,16 +1850,16 @@ function setupSortAndFilter() {
 
   // News sort toggle button
   newsSortToggleBtn.addEventListener('click', function() {
-    if (newsSortMode === 'score') {
-      newsSortMode = 'time';
-      this.textContent = '按得分排序';
-      newsSortSelect.value = 'time';
-      drawNewsList(newsData, 'time');
-    } else {
+    if (newsSortMode === 'time') {
       newsSortMode = 'score';
       this.textContent = '按时间排序';
       newsSortSelect.value = 'score-desc';
       drawNewsList(newsData, 'score-desc');
+    } else {
+      newsSortMode = 'time';
+      this.textContent = '按得分排序';
+      newsSortSelect.value = 'time-desc';
+      drawNewsList(newsData, 'time-desc');
     }
   });
 }
