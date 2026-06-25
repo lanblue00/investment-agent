@@ -1,6 +1,9 @@
 name: Deploy Dashboard
 
 on:
+  # 代码推送后自动部署
+  push:
+    branches: [main]
   # 每个交易日 9:00 + 12:00 + 16:00 CST (01:00 + 04:00 + 08:00 UTC) 自动运行
   schedule:
     - cron: '0 1,4,8 * * 1-5'
